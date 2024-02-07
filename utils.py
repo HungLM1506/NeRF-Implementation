@@ -114,5 +114,24 @@ def psnr(image1, image2):
     return 20 * math.log10(PIXEL_MAX / math.sqrt(mse))
 
 
-def volume_rendering():
-    pass
+def volume_rendering(sigmas, rgbs, step_size):
+    """
+        Volume rendering function
+        sigmas: shape [batch_size,n_point,1]
+        rgbs: rgb is output of model
+        step_size: distance per jump
+    """
+    B, N, _ = sigmas.shape
+
+    # transmittance of first ray is 1
+    T_i = torch.cat([torch.ones((B, 1, 1), device=sigmas.device),
+                    torch.exp(-step_size*torch.cumsum(sigmas, dim=1)[:, :-1])], dim=1)  # ouput is a list
+    alpha = 1 - torch.exp(-sigmas*step_size)
+    weights = alpha * T_i
+
+    rendered_colors = torch.sum(weights*rgbs, dim=1)  # output is a number
+
+    return rendered_colors
+
+
+

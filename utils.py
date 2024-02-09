@@ -2,36 +2,51 @@ import torch
 import numpy as np
 import os
 import math
-import s
+import imageio
 import re
 
 
 def intrinsic_matrix(fx, fy, ox, oy):
-    K = torch.tensor([[fx, 0, ox],
+    K = torch.tensor([[fx,  0, ox],
                       [0, fy, oy],
-                      [0, 0, 1]])
+                      [0,  0,  1]])
     return K
 
 
+# def transform(c2w, x_c):
+#     """
+#         Camera to World Coordinate Conversion
+#         c2w: extrinsic matrix
+#         x_c: position in camera coordinate. Shape [batch_size, height, width, 3]
+#     """
+#     B, H, W, _ = x_c.shape
+#     x_c_homogeneous = torch .cat(
+#         [x_c, torch.ones(B, H, W, 1, device=x_c.device)], dim=-1)
+
+#     # batch matmul
+#     x_w_homogeneous_reshape = x_c_homogeneous.view(
+#         B, -1, 4)  # shape [100,40000,4]
+#     x_w_homogeneous_reshape = x_w_homogeneous_reshape.permute(0, 2, 1)
+#     x_w_homogeneous_reshape = c2w.bmm(x_w_homogeneous_reshape)  # batch matmul
+#     x_w_homogeneous_reshape = x_w_homogeneous_reshape.permute(
+#         0, 2, 1).view(B, H, W, 4)
+#     x_w = x_w_homogeneous_reshape[:, :, :, :3]
+
+#     return x_w
+
 def transform(c2w, x_c):
-    """
-        Camera to World Coordinate Conversion
-        c2w: extrinsic matrix
-        x_c: position in camera coordinate. Shape [batch_size, height, width, 3]
-    """
     B, H, W, _ = x_c.shape
-    x_c_homogeneous = torch .cat(
+    x_c_homogeneous = torch.cat(
         [x_c, torch.ones(B, H, W, 1, device=x_c.device)], dim=-1)
 
-    # batch matmul
-    x_w_homogeneous_reshape = x_c_homogeneous.view(
-        B, -1, 4)  # shape [100,40000,4]
-    x_w_homogeneous_reshape = x_w_homogeneous_reshape.permute(0, 2, 1)
-    x_w_homogeneous_reshape = c2w.bmm(x_w_homogeneous_reshape)  # batch matmul
-    x_w_homogeneous_reshape = x_w_homogeneous_reshape.permute(
+    # batched matmul
+    x_w_homogeneous_reshaped = x_c_homogeneous.view(
+        B, -1, 4)  # [100, 40000, 4]
+    x_w_homogeneous_reshaped = x_w_homogeneous_reshaped.permute(0, 2, 1)
+    x_w_homogeneous_reshaped = c2w.bmm(x_w_homogeneous_reshaped)
+    x_w_homogeneous = x_w_homogeneous_reshaped.permute(
         0, 2, 1).view(B, H, W, 4)
-    x_w = x_w_homogeneous_reshape[:, :, :, :3]
-
+    x_w = x_w_homogeneous[:, :, :, :3]
     return x_w
 
 
@@ -43,15 +58,16 @@ def pixel_to_camera(K, uv, s):
         s: depth of this point along the optical axis. s = Zc
     """
     B, H, W, C = uv.shape
-    uv_reshape = uv.view(B, -1, 3).permute(0, 2, 1)
-    uv_homogeneous_reshape = torch.cat(
-        [uv_reshape[:, 1:], torch.ones((B, 1, H*W), device=uv.device)], dim=1)
+    uv_reshaped = uv.view(B, -1, 3).permute(0, 2, 1)
+    uv_homogeneous_reshaped = torch.cat(
+        [uv_reshaped[:, 1:], torch.ones((B, 1, H*W), device=uv.device)], dim=1)
     K_inv = torch.inverse(K)
-    uv_homogeneous_reshape = torch.stack(
-        uv_homogeneous_reshape[:, 1], uv_homogeneous_reshape[:, 0], uv_homogeneous_reshape[:, 2], dim=1)
-    x_c_homogeneous_reshape = K_inv.bmm(uv_homogeneous_reshape)
-    x_c_homogeneous = x_c_homogeneous_reshape.permute(0, 2, 1).view(B, H, W, 3)
-    x_c = x_c_homogeneous_reshape * s
+    uv_homogeneous_reshaped = torch.stack(
+        (uv_homogeneous_reshaped[:, 1], uv_homogeneous_reshaped[:, 0], uv_homogeneous_reshaped[:, 2]), dim=1)
+    x_c_homogeneous_reshaped = K_inv.bmm(uv_homogeneous_reshaped)
+    x_c_homogeneous = x_c_homogeneous_reshaped.permute(
+        0, 2, 1).view(B, H, W, 3)
+    x_c = x_c_homogeneous * s
 
     return x_c
 
@@ -66,21 +82,21 @@ def pixel_to_rays(K, c2w, uv):
         uv: position in image coordinate. Shape [batch_size, height,width,C]. [C: image_idx,y,x]
    """
     B, H, W, C = uv.shape  # C = (image_idx,y,x)
-    s = torch.ones((B, H, W, 1), device=uv.device)
-    # find x_c (calculate each pixel in image plane)
-    x_c = pixel_to_camera(K, uv, s)
+    # find x_c
+    x_c = pixel_to_camera(K, uv, torch.ones((B, H, W, 1), device=uv.device))
 
     w2c = torch.inverse(c2w)
     R = w2c[:, :3, :3]
     R_inv = torch.inverse(R)
     T = w2c[:, :3, 3]
-    # ray origin
+    # ray origins
     r_o = -torch.bmm(R_inv, T.unsqueeze(-1)).squeeze(-1)
 
-    # ray direction
+    # ray directions
     x_w = transform(c2w, x_c)
     r_o = r_o.unsqueeze(1).unsqueeze(1).repeat(1, H, W, 1)
     r_d = (x_w - r_o) / torch.norm((x_w - r_o), dim=-1, keepdim=True)
+
     return r_o, r_d
 
 
@@ -101,7 +117,7 @@ def sample_along_rays(r_o, r_d, perturb=True, near=2.0, far=6.0, n_samples=64):
 
 def positional_encoding(x, L):
     freqs = 2.0 ** torch.arange(L).float().to(x.device)
-    x_input = x.unsqueeze(-1) * freqs * 2 * torch.pi
+    x_input = x.unsqueeze(-1) * freqs * 2 * math.pi
     encoding = torch.cat([torch.sin(x_input), torch.cos(x_input)], dim=-1)
     # add to original input
     encoding = torch.cat([x, encoding.reshape(*x.shape[:-1], -1)], dim=-1)

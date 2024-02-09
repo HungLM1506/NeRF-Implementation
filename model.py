@@ -3,9 +3,9 @@ import torch.nn as nn
 from utils import positional_encoding
 
 
-class MLP(nn.Module):
+class NeRF_Base(nn.Module):
     def __init__(self):
-        super(MLP, self).__init__()
+        super(NeRF_Base, self).__init__()
 
         # Initial input linear layers for xyz
         self.fc1_block1 = nn.Linear(2 * 3 * 10 + 3, 256)

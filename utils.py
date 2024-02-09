@@ -13,37 +13,22 @@ def intrinsic_matrix(fx, fy, ox, oy):
     return K
 
 
-# def transform(c2w, x_c):
-#     """
-#         Camera to World Coordinate Conversion
-#         c2w: extrinsic matrix
-#         x_c: position in camera coordinate. Shape [batch_size, height, width, 3]
-#     """
-#     B, H, W, _ = x_c.shape
-#     x_c_homogeneous = torch .cat(
-#         [x_c, torch.ones(B, H, W, 1, device=x_c.device)], dim=-1)
-
-#     # batch matmul
-#     x_w_homogeneous_reshape = x_c_homogeneous.view(
-#         B, -1, 4)  # shape [100,40000,4]
-#     x_w_homogeneous_reshape = x_w_homogeneous_reshape.permute(0, 2, 1)
-#     x_w_homogeneous_reshape = c2w.bmm(x_w_homogeneous_reshape)  # batch matmul
-#     x_w_homogeneous_reshape = x_w_homogeneous_reshape.permute(
-#         0, 2, 1).view(B, H, W, 4)
-#     x_w = x_w_homogeneous_reshape[:, :, :, :3]
-
-#     return x_w
-
 def transform(c2w, x_c):
+    """
+        Camera to World Coordinate Conversion
+        c2w: extrinsic matrix
+        x_c: position in camera coordinate. Shape [batch_size, height, width, 3]. In final dimension is [x,y,z]
+    """
     B, H, W, _ = x_c.shape
     x_c_homogeneous = torch.cat(
-        [x_c, torch.ones(B, H, W, 1, device=x_c.device)], dim=-1)
+        [x_c, torch.ones(B, H, W, 1, device=x_c.device)], dim=-1)  # create [x,y,z] -->[x,y,z,1]
 
     # batched matmul
     x_w_homogeneous_reshaped = x_c_homogeneous.view(
         B, -1, 4)  # [100, 40000, 4]
     x_w_homogeneous_reshaped = x_w_homogeneous_reshaped.permute(0, 2, 1)
-    x_w_homogeneous_reshaped = c2w.bmm(x_w_homogeneous_reshaped)
+    x_w_homogeneous_reshaped = c2w.bmm(
+        x_w_homogeneous_reshaped)  # batch matmul
     x_w_homogeneous = x_w_homogeneous_reshaped.permute(
         0, 2, 1).view(B, H, W, 4)
     x_w = x_w_homogeneous[:, :, :, :3]
@@ -60,7 +45,7 @@ def pixel_to_camera(K, uv, s):
     B, H, W, C = uv.shape
     uv_reshaped = uv.view(B, -1, 3).permute(0, 2, 1)
     uv_homogeneous_reshaped = torch.cat(
-        [uv_reshaped[:, 1:], torch.ones((B, 1, H*W), device=uv.device)], dim=1)
+        [uv_reshaped[:, 1:], torch.ones((B, 1, H*W), device=uv.device)], dim=1)  # cat [u,v] --> [u,v,1] dim=1 cuz permute previous
     K_inv = torch.inverse(K)
     uv_homogeneous_reshaped = torch.stack(
         (uv_homogeneous_reshaped[:, 1], uv_homogeneous_reshaped[:, 0], uv_homogeneous_reshaped[:, 2]), dim=1)
@@ -82,7 +67,7 @@ def pixel_to_rays(K, c2w, uv):
         uv: position in image coordinate. Shape [batch_size, height,width,C]. [C: image_idx,y,x]
    """
     B, H, W, C = uv.shape  # C = (image_idx,y,x)
-    # find x_c
+    # find x_c with z = 1
     x_c = pixel_to_camera(K, uv, torch.ones((B, H, W, 1), device=uv.device))
 
     w2c = torch.inverse(c2w)
@@ -111,7 +96,9 @@ def sample_along_rays(r_o, r_d, perturb=True, near=2.0, far=6.0, n_samples=64):
     t = torch.linspace(near, far, n_samples, device=r_o.device)
     if perturb:
         t = t + torch.randn_like(t) * (far-near)/n_samples
-    x = r_o + r_d * t.unsqueeze(-1).unsqueeze(-1)  # R = o + td
+        # print(f't', t.shape)
+    x = r_o + r_d * t.unsqueeze(-1).unsqueeze(-1)  # R = o + td.
+    # x is a list
     return x
 
 

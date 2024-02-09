@@ -32,52 +32,6 @@ def load_data_numpy(file_path):
     return images_train, c2w_train, images_valid, c2w_valid, c2w_test, focal
 
 
-# class RaysData(nn.Module):
-#     def __init__(self, images, K, c2w, device='cuda'):
-#         super(RaysData).__init__()
-#         self.images = images
-#         self.K = K
-#         self.c2w = c2w
-#         self.device = device
-
-#         # shape of images
-#         self.height = images.shape[1]
-#         self.width = images.shape[2]
-
-#         # create UV grid
-#         self.uv = torch.stack(torch.meshgrid(torch.arange(self.images.shape[0]), torch.arange(
-#             self.height), torch.arange(self.width)), dim=-1).to(device).float()  # shape (image_idx,u,v)
-
-#         # add 0.5 offset to each pixel
-#         # select to u and v. dimension [0] is image_idx
-#         self.uv[..., 1] += 0.5
-#         self.uv[..., 2] += 0.5
-#         # self.uv_flattened = self.uv.reshape(-1, 3)
-
-#         self.r_o, self.r_d = pixel_to_rays(K, c2w, self.uv)
-#         self.pixels = images.reshape(-1, 3)
-#         self.r_o_flattened = self.r_o.reshape(-1, 3)
-#         self.r_d_flattened = self.r_d.reshape(-1, 3)
-
-#     def sample_rays(self, batch_size):
-#         # sample rays
-#         idx = torch.randint(
-#             0, self.pixels.shape[0], (batch_size,), device=self.pixels.device)
-#         return self.r_o_flattened[idx], self.r_d_flattened[idx], self.pixels[idx]
-
-#     def sample_rays_single_image(self, images_index=None):
-#         if images_index is not None:
-#             images_index = torch.randint(
-#                 0, self.c2w.shape[0], (1,), device=self.device).item()
-#         start_idx = images_index * self.height * self.width
-#         end_idx = self.height * self.width
-
-#         r_o_single = self.r_o_flattened[start_idx:end_idx]
-#         r_d_single = self.r_d_flattened[start_idx:end_idx]
-#         pixels_single = self.pixels[start_idx:end_idx]
-
-#         return r_o_single, r_d_single, pixels_single
-
 class RaysData:
     def __init__(self, images, K, c2w, device='cuda'):
         self.images = images
@@ -90,8 +44,9 @@ class RaysData:
 
         # create UV grid
         self.uv = torch.stack(torch.meshgrid(torch.arange(self.images.shape[0]), torch.arange(
-            self.height), torch.arange(self.width)), dim=-1).to(device).float()
+            self.height), torch.arange(self.width)), dim=-1).to(device).float()  # shape(image_idx,u,v)
         # add 0.5 offset to each pixel
+        # select to u and v. dimension [0] is image_idx
         self.uv[..., 1] += 0.5
         self.uv[..., 2] += 0.5
         self.uv_flattened = self.uv.reshape(-1, 3)

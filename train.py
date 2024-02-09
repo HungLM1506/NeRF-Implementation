@@ -16,7 +16,10 @@ def train(model, train_loader, val_loader, test_loader, optimizer, criterion, nu
     model.train()
     for epoch in range(num_epochs):
         rays_o, rays_d, pixels = train_loader.sample_rays(batch_size)
+        # print(f'ray_o', rays_o.shape)
+        # print(f'rays_d', rays_d.shape)
         points = sample_along_rays(rays_o, rays_d, perturb=True)
+        # print(f'points', points.shape)
         points = points.permute(1, 0, 2)
         rays_d = rays_d.unsqueeze(1).repeat(1, points.shape[1], 1)
 

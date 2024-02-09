@@ -2,6 +2,8 @@ import torch
 import numpy as np
 import os
 import math
+import s
+import re
 
 
 def intrinsic_matrix(fx, fy, ox, oy):
@@ -125,7 +127,7 @@ def volume_rendering(sigmas, rgbs, step_size):
 
     # transmittance of first ray is 1
     T_i = torch.cat([torch.ones((B, 1, 1), device=sigmas.device),
-                    torch.exp(-step_size*torch.cumsum(sigmas, dim=1)[:, :-1])], dim=1)  # ouput is a list
+                    torch.exp(-step_size*torch.cumsum(sigmas, dim=1)[:, :-1])], dim=1)  # output is a list
     alpha = 1 - torch.exp(-sigmas*step_size)
     weights = alpha * T_i
 
@@ -134,4 +136,12 @@ def volume_rendering(sigmas, rgbs, step_size):
     return rendered_colors
 
 
+def create_gif(image_folder, gif_path, duration=5):
+    def sort_key(filename):
+        number = re.search(r"(\d+)", filename)
+        return int(number.group(1)) if number else 0
 
+    filenames = sorted([os.path.join(image_folder, f) for f in os.listdir(image_folder) if f.endswith('.png') or f.endswith('.jpg')],
+                       key=sort_key)
+    images = [imageio.imread(filename) for filename in filenames]
+    imageio.mimsave(gif_path, images, duration=duration)

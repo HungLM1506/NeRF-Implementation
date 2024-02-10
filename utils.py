@@ -120,22 +120,35 @@ def psnr(image1, image2):
 
 
 def volume_rendering(sigmas, rgbs, step_size):
-    """
-        Volume rendering function
-        sigmas: shape [batch_size,n_point,1]
-        rgbs: rgb is output of model
-        step_size: distance per jump
-    """
-    B, N, _ = sigmas.shape
+    # """
+    #     Volume rendering function
+    #     sigmas: shape [batch_size,n_point,1]
+    #     rgbs: rgb is output of model
+    #     step_size: distance per jump
+    # """
+    # B, N, _ = sigmas.shape
 
+    # # transmittance of first ray is 1
+    # T_i = torch.cat([torch.ones((B, 1, 1), device=sigmas.device),
+    #                 torch.exp(-step_size*torch.cumsum(sigmas, dim=1)[:, :-1])], dim=1)  # output is a list
+    # alpha = 1 - torch.exp(-sigmas*step_size)
+    # weights = alpha * T_i
+
+    # rendered_colors = torch.sum(weights*rgbs, dim=1)  # output is a number
+
+    # return rendered_colors
+    # received help from ChatGPT here to figure out cumsum
+    B, N, _ = sigmas.shape
     # transmittance of first ray is 1
-    T_i = torch.cat([torch.ones((B, 1, 1), device=sigmas.device),
-                    torch.exp(-step_size*torch.cumsum(sigmas, dim=1)[:, :-1])], dim=1)  # output is a list
-    alpha = 1 - torch.exp(-sigmas*step_size)
+    T_i = torch.cat([torch.ones((B, 1, 1), device=rgbs.device),
+                    torch.exp(-step_size * torch.cumsum(sigmas, dim=1)[:, :-1])], dim=1)
+    alpha = 1 - torch.exp(-sigmas * step_size)
     weights = alpha * T_i
 
-    rendered_colors = torch.sum(weights*rgbs, dim=1)  # output is a number
+    # accumulated_transmittance = torch.prod(1 - alpha, dim=1, keepdim=True)
 
+    # + accumulated_transmittance.squeeze(1) * torch.ones((B, 3), device=rgbs.device)
+    rendered_colors = torch.sum(weights * rgbs, dim=1)
     return rendered_colors
 
 
